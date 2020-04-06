@@ -4,7 +4,7 @@ learnhmm.py
 
 Implementation of hidden Markov model.
 
-Learn the model parameters (needed to apply the forward backward algorithm).
+Learn the parameters needed for the forward backward algorithm.
 
 '''
 
@@ -13,118 +13,91 @@ import math
 import numpy as np
 
 Debug = True
-PrintGrad = True
-num_class = 10
-epsilon = 1e-5
-diff_th = 1e-7
 
-class hmm(object):
-    def __init__(self, input_size, hidden_units, learning_rate, init_flag, metrics_out):
-        self.learning_rate = learning_rate
-        self.metrics_out = metrics_out
-        self.layers = [
-            linearLayer(input_size, hidden_units, init_flag),
-            Sigmoid(),
-            linearLayer(hidden_units, num_class, init_flag)
-        ]
-        self.criterion = softmaxCrossEntropy()
+# Normalize by rows
+def norm_rows(W):
+    return W / W.sum(axis=1)[:, np.newaxis]
 
-    # SGD_step: update params by taking one SGD step
-    # <x> a 1-D numpy array
-    # <y> an integer within [0, num_class - 1]
-    def SGD_step(self, x, y):
-        # perform forward propogation and compute intermediate results
-        if PrintGrad:
-            print("		Begin forward pass")
-        for layer in self.layers:
-            x = layer.forward(x)
-            if PrintGrad:
-                print("     output: ", x)
-        loss, _ = self.criterion.forward(x, y)
-        if PrintGrad:
-            print("			Cross entropy: ", loss)
-            print("		Begin backward pass")
+class hmm_train(object):
+    def __init__(self, index2word, index2tag, prior_out, emit_out, trans_out):
+        self.index2word = index2word
+        self.index2tag = index2tag
+        self.prior_out = prior_out
+        self.emit_out = emit_out
+        self.trans_out = trans_out
+        self.word2idx = dict()
+        self.tag2idx = dict()
 
-        # perform back propagation and update parameters
-        delta = self.criterion.backward()
-        if PrintGrad:
-            print("			d(loss)/d(softmax inputs): ", delta)
-        for layer in reversed(self.layers):
-            delta = layer.backward(delta, learning_rate)
-            if PrintGrad:
-                print("     delta: ", delta)
+    def train_model(self, train_input):
+        # load word2idx
+        with open(self.index2word, 'r') as f_idx2word:
+            i = 0
+            for line in f_idx2word:
+                self.word2idx[line] = i
+                i += 1
 
-        if PrintGrad:
-            print("			New first layer weights: ", self.layers[0].W)
-            print("			New first layer bias: ", self.layers[0].b)
-            print("			New second layer weights: ", self.layers[2].W)
-            print("			New second layer bias: ", self.layers[2].b)
-        return loss
+        # load tag2idx
+        with open(self.index2tag, 'r') as f_index2tag:
+            i = 0
+            for line in f_index2tag:
+                self.tag2idx[line] = i
+                i += 1
 
+        # parameter initialization
+        self.N = len(self.tag2idx)
+        self.M = len(self.word2idx)
 
-    def train_model(self, train_file, num_epoch):
-        dataset = [] # a list of features
-        # read the dataset
-        with open(train_file, 'r') as f:
+        self.pi = np.ones(self.N)
+        self.A = np.ones((self.N, self.N))
+        self.B = np.ones((self.N, self.M))
+
+        # read from the training data
+        with open(train_input, 'r') as f:
             for line in f:
-                split_line = line.strip().split(',')
-                y = int(split_line[0])
-                x = np.asarray(split_line[1:], dtype=int)
-                #feature[len(self.dic)] = 1 # add the bias feature
-                dataset.append([y, x])
+                sentence = []
+                words = line.strip().split(' ')
+                i = 0
+                for ele in words:
+                    word_idx = self.word2idx[ele.split('_')[0]]
+                    tag_idx = self.word2idx[ele.split('_')[1]]
 
-        with open(metrics_out, 'w') as f_metrics:
-            # perform training
-            for epoch in range(num_epoch):
-                loss = 0
-                for idx in range(len(dataset)):
-                    loss = self.SGD_step(dataset[idx][1], dataset[idx][0])
-                    if Debug and (idx % 1000 == 0):
-                        print("[Epoch ", epoch + 1, "] Step ", idx + 1, ", current_loss: ", loss)
+                    # update intermediate counts
+                    if i == 0:
+                        self.pi[tag_idx] += 1
+                    else:
+                        self.A[sentence[i - 1][1]][tag_idx] += 1
 
-                train_loss, train_error = self.evaluate(train_input, train_out)
-                test_loss, test_error = self.evaluate(test_input, test_out)
+                    self.B[tag_idx][word_idx]
 
-                if Debug:
-                    print("[Epoch ", epoch + 1, "] ", end='')
-                    print("train_loss: ", train_loss, end=' ')
-                    print("train_error: ", train_error)
-                    print("test_loss: ", test_loss, end=' ')
-                    print("test_error: ", test_error)
+                    sentence.append([word_idx, tag_idx])
+                    i += 1
 
-                f_metrics.write("epoch=" + str(epoch) + " crossentryopy(train): " + str(train_loss) + "\n")
-                f_metrics.write("epoch=" + str(epoch) + " crossentryopy(test): " + str(test_loss) + "\n")
+        # normalize parameters
+        self.pi = norm_rows(self.pi)
+        self.A = norm_rows(self.A)
+        self.B = norm_rows(self.B)
 
-    # predict y given an array x
-    # not used
-    def predict(self, x):
-        for layer in self.layers:
-            x = layer.forward(x)
-        sm = np.exp(x) / np.sum(np.exp(x), axis=0)
-        return np.argmax(sm)
+        if Debug:
+            print("pi: ", self.pi)
+            print("A: ", self.A)
+            print("B: ", self.B)
 
-    def evaluate(self, in_path, out_path, write = False):
-        total_loss, error, total = 0., 0., 0.
-
-        with open(in_path, 'r') as f_in:
-            with open(out_path, 'a') as f_out:
-                for line in f_in:
-                    split_line = line.strip().split(',')
-                    y = int(split_line[0])
-                    x = np.asarray(split_line[1:], dtype=int)
-
-                    for layer in self.layers:
-                        x = layer.forward(x)
-                    loss, pred = self.criterion.forward(x, y)
-
-                    total_loss += loss
-                    if pred != y:
-                        error += 1
-                    if write:
-                        f_out.write(str(pred) + "\n")
-                    total += 1
-
-        return total_loss / total, error / total
+        # write the parameters to files
+        with open(prior_out, 'w') as f_prior:
+            for j in range(self.N):
+                f_prior.write(str(self.pi[j]) + "\n")
+        
+        with open(trans_out, 'w') as f_trans:
+            for j in range(self.N):
+                for k in range(self.N):
+                    f_trans.write(str(self.A[j][k]) + " ")
+                f_trans.write("\n")
+            
+        with open(emit_out, 'w') as f_emit:
+            for j in range(self.N):
+                for k in range(self.N):
+                    f_emit.write(str(self.B[j][k]) + " ")
+                f_emit.write("\n")
 
 
 if __name__ == '__main__':
@@ -137,30 +110,13 @@ if __name__ == '__main__':
                              # The tags are ordered by index, with the first word having index of 1, the second word having index of 2, etc.
     index2tag = sys.argv[3] # path to the .txt that specifies the dictionary mapping from tags to indices. 
                             # The tags are ordered by index, with the first tag having index of 1, the second tag having index of 2, etc.
-    hmmprior = sys.argv[4] # path to output .txt file to which the estimated prior (π) will be written. 
-                           # The file output to this path should be in the same format as the handout hmmprior.txt
-    hmmemit = sys.argv[5] # path to output .txt file to which the emission probabilities (B) will be written. 
-                          # The file output to this path should be in the same format as the handout hmmemit.txt
-    hmmtrans = sys.argv[6] # path to output .txt file to which the transition probabilities (A) will be written. 
-                           # The file output to this path should be in the same format as the handout hmmtrans.txt
-
-    # get input_size
-    with open(train_input, 'r') as f_in:
-        line = f_in.readline()
-        split_line = line.strip().split(',')
-        input_size = len(split_line) - 1
+    prior_out = sys.argv[4] # path to output .txt file to which the estimated prior (π) will be written. (same format as hmmprior.txt)
+    emit_out = sys.argv[5] # path to output .txt file to which the emission probabilities (B) will be written. (same format as hmmemit.txt)
+    trans_out = sys.argv[6] # path to output .txt file to which the transition probabilities (A) will be written. (same format as hmmtrans.txt)
 
     # build and init 
-    model = hmm(input_size, hidden_units, learning_rate, init_flag, metrics_out)
+    model = hmm_train(index2word, index2tag, prior_out, emit_out, trans_out)
 
-    # training
-    model.train_model(train_input, num_epoch)
+    # train and and write model parameter to output files
+    model.train_model(train_input)
 
-    # testing: evaluate and write labels to output files
-    train_loss, train_error = model.evaluate(train_input, train_out, True)
-    test_loss, test_error = model.evaluate(test_input, test_out, True)
-
-    print("train_loss: ", train_loss, end=' ')
-    print("train_error: ", train_error)
-    print("test_loss: ", test_loss, end=' ')
-    print("test_error: ", test_error)
