@@ -110,7 +110,7 @@ if __name__ == '__main__':
                              # The tags are ordered by index, with the first word having index of 1, the second word having index of 2, etc.
     index2tag = sys.argv[3] # path to the .txt that specifies the dictionary mapping from tags to indices. 
                             # The tags are ordered by index, with the first tag having index of 1, the second tag having index of 2, etc.
-    prior_out = sys.argv[4] # path to output .txt file to which the estimated prior (π) will be written. (same format as hmmprior.txt)
+    prior_out = sys.argv[4] # path to output .txt file to which the estimated prior (pi) will be written. (same format as hmmprior.txt)
     emit_out = sys.argv[5] # path to output .txt file to which the emission probabilities (B) will be written. (same format as hmmemit.txt)
     trans_out = sys.argv[6] # path to output .txt file to which the transition probabilities (A) will be written. (same format as hmmtrans.txt)
 
