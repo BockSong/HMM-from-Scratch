@@ -70,33 +70,51 @@ class hmm_eval(object):
                 for k in range(self.N):
                     self.B[j][k] = float(words[k])
 
+        # log-space
+        self.pi = np.log(self.pi)
+        self.A = np.log(self.A)
+        self.B = np.log(self.B)
+
     # given x, compute the forward prob predict
     def forward(self, x):
         T = x.size
         self.alpha = np.zeros((T, self.N))
 
-        for j in range(self.N):
-            self.alpha[0][j] = self.pi[j] * self.B[j][x[0]]
+        # log-space
+        #for j in range(self.N):
+        #    self.alpha[0][j] = self.pi[j] + self.B[j][x[0]]
+        self.alpha[0] = self.pi + self.B.T[x[0]]
 
         for t in range(1, T):
             for j in range(self.N):
-                sumation = 0
+                sum_exp = 0
+                # log-sum-exp trick
+                v = self.alpha[t - 1] + self.A.T[j]
+                m = np.max(v)
                 for k in range(self.N):
-                    sumation += self.alpha[t - 1][k] * self.A[k][j]
-                self.alpha[t][j] = self.B[j][x[t]] * sumation
+                    #sum_exp += np.exp(self.alpha[t - 1][k] + self.A[k][j])
+                    sum_exp += np.exp(v[k] - m)
+                self.alpha[t][j] = self.B[j][x[t]] + m + np.log(sum_exp)
 
     # given x, compute the backward prob predict
     def backward(self, x):
         T = x.size
         self.beta = np.zeros((T, self.N))
 
-        for j in range(self.N):
-            self.beta[T - 1][j] = 1
+        # log-space
+        #for j in range(self.N):
+        #    self.beta[T - 1][j] = 1
+        # just 0
 
         for t in range(T - 2, -1, -1):
             for j in range(self.N):
+                sum_exp = 0
+                # log-sum-exp trick
+                v = self.B.T[x[t + 1]] + self.beta.T[t + 1] + self.A[j]
+                m = np.max(v)
                 for k in range(self.N):
-                    self.beta[t][j] += self.B[k][x[t + 1]] * self.beta[k][t + 1] * self.A[j][k]
+                    sum_exp += np.exp(v[k] - m)
+                self.beta[t][j] = m + np.log(sum_exp)
 
     # make pred to each word in sequence x, by Minimum Bayes Risk Prediction
     def predict(self, x):
@@ -123,12 +141,12 @@ class hmm_eval(object):
                     T = x.size
 
                     # compute the log likehood of the sequence
-                    this_log_lik = np.log(np.sum(self.alpha[T - 1]))
-                    # TODO: use the log-sum-exp trick
+                    # log-space
+                    this_log_lik = np.sum(self.alpha[T - 1])
                     log_lik += this_log_lik
 
-                    key_list = list(self.tag2idx.keys()) 
-                    val_list = list(self.tag2idx.values()) 
+                    key_list = list(self.tag2idx.keys())
+                    val_list = list(self.tag2idx.values())
                     
                     pred = self.predict(x)
                     for i in range(T):
