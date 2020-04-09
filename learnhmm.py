@@ -16,7 +16,10 @@ Debug = True
 
 # Normalize by rows
 def norm_rows(W):
-    return W / W.sum(axis=1)[:, np.newaxis]
+    if len(W.shape) == 1:
+        return W / np.sum(W)
+    else:
+        return W / W.sum(axis=1)[:, np.newaxis]
 
 class hmm_train(object):
     def __init__(self, index2word, index2tag, prior_out, emit_out, trans_out):
@@ -33,6 +36,7 @@ class hmm_train(object):
         with open(self.index2word, 'r') as f_idx2word:
             i = 0
             for line in f_idx2word:
+                line = line.replace('\n', '').replace('\r', '')
                 self.word2idx[line] = i
                 i += 1
 
@@ -40,8 +44,13 @@ class hmm_train(object):
         with open(self.index2tag, 'r') as f_index2tag:
             i = 0
             for line in f_index2tag:
+                line = line.replace('\n', '').replace('\r', '')
                 self.tag2idx[line] = i
                 i += 1
+
+        if Debug:
+            print(self.word2idx)
+            print(self.tag2idx)
 
         # parameter initialization
         self.N = len(self.tag2idx)
@@ -59,7 +68,7 @@ class hmm_train(object):
                 i = 0
                 for ele in words:
                     word_idx = self.word2idx[ele.split('_')[0]]
-                    tag_idx = self.word2idx[ele.split('_')[1]]
+                    tag_idx = self.tag2idx[ele.split('_')[1]]
 
                     # update intermediate counts
                     if i == 0:
@@ -67,7 +76,7 @@ class hmm_train(object):
                     else:
                         self.A[sentence[i - 1][1]][tag_idx] += 1
 
-                    self.B[tag_idx][word_idx]
+                    self.B[tag_idx][word_idx] += 1
 
                     sentence.append([word_idx, tag_idx])
                     i += 1
@@ -101,8 +110,8 @@ class hmm_train(object):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 6:
-        print("The number of command parameters is incorrect.")
+    if len(sys.argv) != 7:
+        print("The number of command parameters is incorrect: " + str(len(sys.argv)))
         exit(-1)
 
     train_input = sys.argv[1]  # path to the training input .csv file

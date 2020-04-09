@@ -34,6 +34,7 @@ class hmm_eval(object):
         with open(self.index2word, 'r') as f_idx2word:
             i = 0
             for line in f_idx2word:
+                line = line.replace('\n', '').replace('\r', '')
                 self.word2idx[line] = i
                 i += 1
 
@@ -41,6 +42,7 @@ class hmm_eval(object):
         with open(self.index2tag, 'r') as f_index2tag:
             i = 0
             for line in f_index2tag:
+                line = line.replace('\n', '').replace('\r', '')
                 self.tag2idx[line] = i
                 i += 1
 
@@ -149,8 +151,9 @@ class hmm_eval(object):
                     val_list = list(self.tag2idx.values())
                     
                     pred = self.predict(x)
-                    for i in range(T):
-                        f_out.write(x_str + "_" + key_list[val_list.index(pred[i])] + " ")
+                    f_out.write(x_str[0] + "_" + key_list[val_list.index(pred[0])])
+                    for i in range(1, T):
+                        f_out.write(" " + x_str[i] + "_" + key_list[val_list.index(pred[i])])
                     f_out.write("\n")
 
                     if (pred == y).all():
@@ -162,7 +165,7 @@ class hmm_eval(object):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 8:
+    if len(sys.argv) != 9:
         print("The number of command parameters is incorrect.")
         exit(-1)
 
