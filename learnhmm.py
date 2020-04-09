@@ -12,7 +12,7 @@ import sys
 import math
 import numpy as np
 
-Debug = True
+Debug = False
 
 # Normalize by rows
 def norm_rows(W):
@@ -94,18 +94,18 @@ class hmm_train(object):
         # write the parameters to files
         with open(prior_out, 'w') as f_prior:
             for j in range(self.N):
-                f_prior.write(str(self.pi[j]) + "\n")
+                f_prior.write(str("{:.18e}".format(self.pi[j])) + "\n")
         
         with open(trans_out, 'w') as f_trans:
             for j in range(self.N):
                 for k in range(self.N):
-                    f_trans.write(str(self.A[j][k]) + " ")
+                    f_trans.write(str("{:.18e}".format(self.A[j][k])) + " ")
                 f_trans.write("\n")
             
         with open(emit_out, 'w') as f_emit:
             for j in range(self.N):
-                for k in range(self.N):
-                    f_emit.write(str(self.B[j][k]) + " ")
+                for k in range(self.M):
+                    f_emit.write(str("{:.18e}".format(self.B[j][k])) + " ")
                 f_emit.write("\n")
 
 
