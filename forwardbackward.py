@@ -13,7 +13,6 @@ import math
 import numpy as np
 
 Debug = True
-PrintGrad = True
 
 class hmm_eval(object):
     def __init__(self, index2word, index2tag, hmmprior, hmmemit, hmmtrans, metrics_out):
@@ -46,36 +45,45 @@ class hmm_eval(object):
                 self.tag2idx[line] = i
                 i += 1
 
+        if Debug:
+            print(self.word2idx)
+            print(self.tag2idx)
+
         # parameter initialization
         self.N = len(self.tag2idx) # number of tags (candidate observations)
         self.M = len(self.word2idx) # number of words (candidate states)
 
-        self.pi = np.ones(self.N)
-        self.A = np.ones((self.N, self.N))
-        self.B = np.ones((self.N, self.M))
+        self.pi = np.zeros(self.N)
+        self.A = np.zeros((self.N, self.N))
+        self.B = np.zeros((self.N, self.M))
 
         # read the parameters
-        with open(hmmprior, 'w') as f_prior:
+        with open(self.hmmprior, 'r') as f_prior:
             for j in range(self.N):
                 num = f_prior.readline().strip()
                 self.pi[j] = float(num)
         
-        with open(hmmemit, 'w') as f_trans:
-            for j in range(self.N):
-                words = f_trans.readline().strip().split(' ')
-                for k in range(self.N):
-                    self.A[j][k] = float(words[k])
-            
-        with open(hmmtrans, 'w') as f_emit:
+        with open(self.hmmtrans, 'r') as f_emit:
             for j in range(self.N):
                 words = f_emit.readline().strip().split(' ')
                 for k in range(self.N):
-                    self.B[j][k] = float(words[k])
+                    self.A[j][k] = float(words[k])
 
+        with open(self.hmmemit, 'r') as f_trans:
+            for j in range(self.N):
+                words = f_trans.readline().strip().split(' ')
+                for k in range(self.M):
+                    self.B[j][k] = float(words[k])
+            
         # log-space
         self.pi = np.log(self.pi)
         self.A = np.log(self.A)
         self.B = np.log(self.B)
+
+        if Debug:
+            print(self.pi)
+            print(self.A)
+            print(self.B)
 
     # given x, compute the forward prob predict
     def forward(self, x):
@@ -112,7 +120,7 @@ class hmm_eval(object):
             for j in range(self.N):
                 sum_exp = 0
                 # log-sum-exp trick
-                v = self.B.T[x[t + 1]] + self.beta.T[t + 1] + self.A[j]
+                v = self.B.T[x[t + 1]] + self.beta[t + 1] + self.A[j]
                 m = np.max(v)
                 for k in range(self.N):
                     sum_exp += np.exp(v[k] - m)
@@ -134,13 +142,17 @@ class hmm_eval(object):
                     x_str, y_str = [], []
                     for ele in words:
                         word = ele.split('_')
-                        x_str.append(self.word2idx(word[0]))
-                        y_str.append(self.tag2idx(word[1]))
+                        x_str.append(self.word2idx[word[0]])
+                        y_str.append(self.tag2idx[word[1]])
                     
                     # transfer from list to numpy array
                     x = np.array(x_str)
                     y = np.array(y_str)
                     T = x.size
+
+                    # run forward and backward
+                    self.forward(x)
+                    self.backward(x)
 
                     # compute the log likehood of the sequence
                     # log-space
@@ -151,11 +163,15 @@ class hmm_eval(object):
                     val_list = list(self.tag2idx.values())
                     
                     pred = self.predict(x)
-                    f_out.write(x_str[0] + "_" + key_list[val_list.index(pred[0])])
+                    f_out.write(str(x_str[0]) + "_" + key_list[val_list.index(pred[0])])
                     for i in range(1, T):
-                        f_out.write(" " + x_str[i] + "_" + key_list[val_list.index(pred[i])])
+                        f_out.write(" " + str(x_str[i]) + "_" + key_list[val_list.index(pred[i])])
                     f_out.write("\n")
 
+                    # TODO: accuracy should be word-level rather than sentence-level
+                    if Debug:
+                        print("pred: ", pred)
+                        print("y: ", y)
                     if (pred == y).all():
                         correct += 1
 
