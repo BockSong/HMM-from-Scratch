@@ -12,7 +12,7 @@ import sys
 import math
 import numpy as np
 
-Debug = True
+Debug = False
 
 class hmm_eval(object):
     def __init__(self, index2word, index2tag, hmmprior, hmmemit, hmmtrans, metrics_out):
@@ -128,26 +128,29 @@ class hmm_eval(object):
 
     # make pred to each word in sequence x, by Minimum Bayes Risk Prediction
     def predict(self, x):
-        cond_prob = np.multiply(self.alpha, self.beta)
+        # need to go back to normal space rather than using log(alpha or beta)
+        cond_prob = np.multiply(np.exp(self.alpha), np.exp(self.beta))
         return np.argmax(cond_prob, axis=1)
 
     # compute avg log-lik using f-b algo and predict tags using MBR
     def evaluate(self, in_path, out_path, write = False):
-        log_lik, correct, total = 0., 0., 0.
+        log_lik, corr_word, word_count, sent_count = 0., 0., 0., 0.
 
         with open(in_path, 'r') as f_in:
-            with open(out_path, 'a') as f_out:
+            with open(out_path, 'w') as f_out:
                 for line in f_in:
                     words = line.strip().split(' ')
-                    x_str, y_str = [], []
+                    x_str, x, y_str, y = [], [], [], []
                     for ele in words:
                         word = ele.split('_')
-                        x_str.append(self.word2idx[word[0]])
-                        y_str.append(self.tag2idx[word[1]])
+                        x_str.append(word[0])
+                        y_str.append(word[1])
+                        x.append(self.word2idx[word[0]])
+                        y.append(self.tag2idx[word[1]])
                     
                     # transfer from list to numpy array
-                    x = np.array(x_str)
-                    y = np.array(y_str)
+                    x = np.array(x)
+                    y = np.array(y)
                     T = x.size
 
                     # run forward and backward
@@ -155,29 +158,29 @@ class hmm_eval(object):
                     self.backward(x)
 
                     # compute the log likehood of the sequence
-                    # log-space
-                    this_log_lik = np.sum(self.alpha[T - 1])
+                    # need to first go back to normal space and then log to the summation
+                    this_log_lik = np.log(np.sum(np.exp(self.alpha[T - 1])))
                     log_lik += this_log_lik
 
-                    key_list = list(self.tag2idx.keys())
-                    val_list = list(self.tag2idx.values())
+                    tag_key = list(self.tag2idx.keys())
+                    tag_val = list(self.tag2idx.values())
                     
                     pred = self.predict(x)
-                    f_out.write(str(x_str[0]) + "_" + key_list[val_list.index(pred[0])])
+                    f_out.write(str(x_str[0]) + "_" + tag_key[tag_val.index(pred[0])])
                     for i in range(1, T):
-                        f_out.write(" " + str(x_str[i]) + "_" + key_list[val_list.index(pred[i])])
+                        f_out.write(" " + str(x_str[i]) + "_" + tag_key[tag_val.index(pred[i])])
                     f_out.write("\n")
 
-                    # TODO: accuracy should be word-level rather than sentence-level
+                    # accuracy should be word-level
                     if Debug:
                         print("pred: ", pred)
                         print("y: ", y)
-                    if (pred == y).all():
-                        correct += 1
+                    corr_word += np.sum(pred == y)
 
-                    total += 1
+                    word_count += T
+                    sent_count += 1
 
-        return log_lik / total, correct / total
+        return log_lik / sent_count, corr_word / word_count
 
 
 if __name__ == '__main__':
@@ -203,10 +206,10 @@ if __name__ == '__main__':
     # testing: evaluate and write labels to output files
     avg_log_lik, accuracy = model.evaluate(test_input, test_out, True)
 
-    print("Average Log-Likelihood: ", avg_log_lik, end=' ')
+    print("Average Log-Likelihood: ", avg_log_lik)
     print("Accuracy: ", accuracy)
     
     # Output: Metrics File
-    with open(metrics_out, 'a') as f_metrics:
+    with open(metrics_out, 'w') as f_metrics:
         f_metrics.write("Average Log-Likelihood: " + str(avg_log_lik) + "\n")
         f_metrics.write("Accuracy: " + str(accuracy) + "\n")
