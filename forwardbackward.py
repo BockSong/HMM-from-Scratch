@@ -12,7 +12,7 @@ import sys
 import math
 import numpy as np
 
-Debug = False
+Debug = True
 
 class hmm_eval(object):
     def __init__(self, index2word, index2tag, hmmprior, hmmemit, hmmtrans, metrics_out):
@@ -74,25 +74,23 @@ class hmm_eval(object):
                 words = f_trans.readline().strip().split(' ')
                 for k in range(self.M):
                     self.B[j][k] = float(words[k])
-            
+
         # log-space
         self.pi = np.log(self.pi)
         self.A = np.log(self.A)
         self.B = np.log(self.B)
 
         if Debug:
-            print(self.pi)
-            print(self.A)
-            print(self.B)
+            print("prior: ", self.pi)
+            print("trans: ", self.A)
+            print("emit: ", self.B)
 
-    # given x, compute the forward prob predict
+    # compute alpha given x
     def forward(self, x):
         T = x.size
         self.alpha = np.zeros((T, self.N))
 
-        # log-space
-        #for j in range(self.N):
-        #    self.alpha[0][j] = self.pi[j] + self.B[j][x[0]]
+        # log-space arithmatic
         self.alpha[0] = self.pi + self.B.T[x[0]]
 
         for t in range(1, T):
@@ -102,19 +100,21 @@ class hmm_eval(object):
                 v = self.alpha[t - 1] + self.A.T[j]
                 m = np.max(v)
                 for k in range(self.N):
-                    #sum_exp += np.exp(self.alpha[t - 1][k] + self.A[k][j])
                     sum_exp += np.exp(v[k] - m)
                 self.alpha[t][j] = self.B[j][x[t]] + m + np.log(sum_exp)
+        
+        # go back to the normal space
+        self.alpha = np.exp(self.alpha)
+        if (Debug):
+            print("alpha: ", self.alpha)
 
-    # given x, compute the backward prob predict
+    # compute beta given x
     def backward(self, x):
         T = x.size
         self.beta = np.zeros((T, self.N))
 
-        # log-space
-        #for j in range(self.N):
-        #    self.beta[T - 1][j] = 1
-        # just 0
+        # log-space arithmatic
+        # no need to set beta[0], just 0
 
         for t in range(T - 2, -1, -1):
             for j in range(self.N):
@@ -126,10 +126,14 @@ class hmm_eval(object):
                     sum_exp += np.exp(v[k] - m)
                 self.beta[t][j] = m + np.log(sum_exp)
 
+        # go back to the normal space
+        self.beta = np.exp(self.beta)
+        if (Debug):
+            print("beta: ", self.beta)
+
     # make pred to each word in sequence x, by Minimum Bayes Risk Prediction
     def predict(self, x):
-        # need to go back to normal space rather than using log(alpha or beta)
-        cond_prob = np.multiply(np.exp(self.alpha), np.exp(self.beta))
+        cond_prob = np.multiply(self.alpha, self.beta)
         return np.argmax(cond_prob, axis=1)
 
     # compute avg log-lik using f-b algo and predict tags using MBR
@@ -157,10 +161,17 @@ class hmm_eval(object):
                     self.forward(x)
                     self.backward(x)
 
-                    # compute the log likehood of the sequence
-                    # need to first go back to normal space and then log to the summation
-                    this_log_lik = np.log(np.sum(np.exp(self.alpha[T - 1])))
+                    # compute the log likehood of the sequence by logsumexp trick
+                    # formula: this_log_lik = np.log(np.sum(self.alpha[T - 1]))
+                    sum_exp = 0
+                    v = np.log(self.alpha[T - 1])
+                    m = np.max(v)
+                    for k in range(self.N):
+                        sum_exp += np.exp(v[k] - m)
+                    this_log_lik = m + np.log(sum_exp)
                     log_lik += this_log_lik
+                    if Debug:
+                        print("log-lik: ", this_log_lik)
 
                     tag_key = list(self.tag2idx.keys())
                     tag_val = list(self.tag2idx.values())
